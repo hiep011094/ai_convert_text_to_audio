@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback } from "react";
+import dynamic from "next/dynamic";
 import {
   Mic2,
   AudioWaveform,
@@ -8,13 +9,24 @@ import {
   CheckCircle2,
   ChevronRight,
   Cpu,
+  Dna,
 } from "lucide-react";
 import AudioUploader from "@/components/audio-uploader";
 import WaveformEditor from "@/components/waveform-editor";
 import TextInput from "@/components/text-input";
-import SynthesisPanel from "@/components/synthesis-panel";
 import { UploadResult, TrimResult, getUploadedAudioUrl } from "@/lib/api";
 import { formatDuration, formatFileSize } from "@/lib/utils";
+
+// Dynamic imports with SSR disabled — these components contain <audio> elements
+// that cause hydration mismatches between server and client rendering
+const SynthesisPanel = dynamic(() => import("@/components/synthesis-panel"), {
+  ssr: false,
+});
+const VoiceProfileList = dynamic(
+  () => import("@/components/voice-profile-list"),
+  { ssr: false }
+);
+
 
 export default function Home() {
   // State
@@ -23,10 +35,13 @@ export default function Home() {
   const [text, setText] = useState("");
   const [refText, setRefText] = useState("");
   const [isUploading, setIsUploading] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    null
+  );
 
   const handleUploadComplete = useCallback((result: UploadResult) => {
     setUploadResult(result);
-    setTrimResult(null); // Reset trim on new upload
+    setTrimResult(null);
   }, []);
 
   const handleTrimComplete = useCallback((result: TrimResult) => {
@@ -38,6 +53,7 @@ export default function Home() {
     setTrimResult(null);
     setText("");
     setRefText("");
+    setSelectedProfileId(null);
   }, []);
 
   // Step tracking
@@ -73,7 +89,7 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground bg-secondary/50 rounded-full px-3 py-1.5">
                 <Cpu className="w-3 h-3" />
-                <span>VieNeu-TTS</span>
+                <span>VieNeu-TTS • GPU</span>
               </div>
               {uploadResult && (
                 <button
@@ -223,8 +239,32 @@ export default function Home() {
             )}
           </div>
 
-          {/* ── Right Panel: Text + Synthesis (2/5) ── */}
+          {/* ── Right Panel: Voice Profiles + Text + Synthesis (2/5) ── */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Voice Profiles */}
+            <section className="glass-card rounded-2xl p-6">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent/10">
+                  <Dna className="w-4 h-4 text-accent" />
+                </div>
+                <div>
+                  <h2 className="text-base font-semibold text-foreground">
+                    Giọng mẫu AI
+                  </h2>
+                  <p className="text-xs text-muted-foreground">
+                    Tạo & quản lý giọng mẫu ổn định
+                  </p>
+                </div>
+              </div>
+
+              <VoiceProfileList
+                trimmedFilename={trimResult?.trimmed_filename || null}
+                refText={refText}
+                selectedProfileId={selectedProfileId}
+                onSelectProfile={setSelectedProfileId}
+              />
+            </section>
+
             {/* Step 3: Text Input + Synthesis */}
             <section className="glass-card rounded-2xl p-6">
               <div className="flex items-center gap-3 mb-4">
@@ -247,7 +287,7 @@ export default function Home() {
                   setText={setText}
                   refText={refText}
                   setRefText={setRefText}
-                  disabled={!trimResult}
+                  disabled={!trimResult && !selectedProfileId}
                 />
 
                 <div className="border-t border-border/50 pt-4">
@@ -255,6 +295,7 @@ export default function Home() {
                     trimmedFilename={trimResult?.trimmed_filename || null}
                     text={text}
                     refText={refText}
+                    voiceProfileId={selectedProfileId}
                   />
                 </div>
               </div>
@@ -269,28 +310,27 @@ export default function Home() {
                 <li className="flex gap-2">
                   <span className="text-primary">•</span>
                   <span>
-                    Chọn đoạn audio rõ ràng, ít tạp âm để đạt chất lượng
-                    clone tốt nhất
+                    <strong>Tạo giọng mẫu</strong> sau khi cắt audio để có kết
+                    quả ổn định, nhanh hơn
                   </span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary">•</span>
                   <span>
-                    Độ dài mẫu lý tưởng là 5-10 giây, tối thiểu 3 giây
+                    Chọn đoạn audio rõ ràng, ít tạp âm, 5-10 giây
                   </span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary">•</span>
                   <span>
-                    Thêm văn bản tham chiếu (nội dung nói trong mẫu) giúp
-                    cải thiện chất lượng đáng kể
+                    Thêm văn bản tham chiếu (nội dung nói trong mẫu) giúp cải
+                    thiện chất lượng
                   </span>
                 </li>
                 <li className="flex gap-2">
                   <span className="text-primary">•</span>
                   <span>
-                    Lần chạy đầu tiên sẽ tải model (~1.5GB), sau đó sẽ nhanh
-                    hơn
+                    Giọng mẫu đã lưu có thể dùng lại mà không cần upload audio
                   </span>
                 </li>
               </ul>
@@ -302,7 +342,7 @@ export default function Home() {
       {/* Footer */}
       <footer className="relative border-t border-border/30 bg-card/20 backdrop-blur-xl mt-8">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between text-xs text-muted-foreground">
-          <span>VN-VoiceClone Pro v1.0 • Powered by VieNeu-TTS</span>
+          <span>VN-VoiceClone Pro v1.1 • Powered by VieNeu-TTS</span>
           <span>Chạy hoàn toàn offline trên máy của bạn</span>
         </div>
       </footer>

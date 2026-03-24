@@ -2,7 +2,6 @@
 
 import React, { useRef, useState, useEffect } from "react";
 import {
-
   Download,
   Play,
   Pause,
@@ -24,12 +23,14 @@ interface SynthesisPanelProps {
   trimmedFilename: string | null;
   text: string;
   refText: string;
+  voiceProfileId: string | null;
 }
 
 export default function SynthesisPanel({
   trimmedFilename,
   text,
   refText,
+  voiceProfileId,
 }: SynthesisPanelProps) {
   const [isSynthesizing, setIsSynthesizing] = useState(false);
   const [result, setResult] = useState<SynthesisResult | null>(null);
@@ -39,17 +40,23 @@ export default function SynthesisPanel({
   const [audioDuration, setAudioDuration] = useState(0);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  const canSynthesize = trimmedFilename && text.trim().length > 0;
+  const canSynthesize =
+    (trimmedFilename || voiceProfileId) && text.trim().length > 0;
 
   const handleSynthesize = async () => {
-    if (!trimmedFilename || !text.trim()) return;
+    if (!text.trim()) return;
+    if (!trimmedFilename && !voiceProfileId) return;
 
     setIsSynthesizing(true);
     setError(null);
     setResult(null);
 
     try {
-      const res = await synthesizeVoice(trimmedFilename, text, refText);
+      const res = await synthesizeVoice(text, {
+        trimmedFilename: trimmedFilename || undefined,
+        refText: refText || undefined,
+        voiceProfileId: voiceProfileId || undefined,
+      });
       setResult(res);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Lỗi tổng hợp giọng nói");
@@ -117,19 +124,43 @@ export default function SynthesisPanel({
         )}
       </Button>
 
+      {/* Mode indicator */}
+      {canSynthesize && !isSynthesizing && !result && (
+        <div className="text-xs text-muted-foreground px-1">
+          {voiceProfileId ? (
+            <p className="flex items-center gap-2 text-primary">
+              <CheckCircle2 className="w-3 h-3" />
+              Sử dụng giọng mẫu đã lưu (nhanh & ổn định hơn)
+            </p>
+          ) : (
+            <p className="flex items-center gap-2 text-yellow-400">
+              ○ Dùng audio thô — tạo giọng mẫu để ổn định hơn
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Requirements hint */}
       {!canSynthesize && !isSynthesizing && !result && (
         <div className="text-xs text-muted-foreground space-y-1 px-1">
           <p className="flex items-center gap-2">
-            <span className={trimmedFilename ? "text-green-400" : "text-yellow-400"}>
-              {trimmedFilename ? "✓" : "○"}
+            <span
+              className={
+                trimmedFilename || voiceProfileId
+                  ? "text-green-400"
+                  : "text-yellow-400"
+              }
+            >
+              {trimmedFilename || voiceProfileId ? "✓" : "○"}
             </span>
-            {trimmedFilename
-              ? "Đã cắt mẫu giọng"
-              : "Cần cắt mẫu giọng từ audio"}
+            {trimmedFilename || voiceProfileId
+              ? "Đã có giọng mẫu"
+              : "Cần cắt mẫu giọng hoặc chọn giọng đã lưu"}
           </p>
           <p className="flex items-center gap-2">
-            <span className={text.trim() ? "text-green-400" : "text-yellow-400"}>
+            <span
+              className={text.trim() ? "text-green-400" : "text-yellow-400"}
+            >
               {text.trim() ? "✓" : "○"}
             </span>
             {text.trim()

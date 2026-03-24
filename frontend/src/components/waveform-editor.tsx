@@ -48,6 +48,7 @@ export default function WaveformEditor({
   useEffect(() => {
     if (!containerRef.current) return;
 
+    let destroyed = false;
     const regions = RegionsPlugin.create();
     regionsRef.current = regions;
 
@@ -67,9 +68,19 @@ export default function WaveformEditor({
 
     wavesurferRef.current = ws;
 
-    ws.load(audioUrl);
+    // Suppress AbortError thrown when destroy() is called during loading
+    ws.on("error", (err: Error) => {
+      if (err.name === "AbortError" || destroyed) return;
+      console.error("WaveSurfer error:", err);
+    });
+
+    ws.load(audioUrl).catch((err: Error) => {
+      if (err.name === "AbortError" || destroyed) return;
+      console.error("WaveSurfer load error:", err);
+    });
 
     ws.on("ready", () => {
+      if (destroyed) return;
       setDuration(ws.getDuration());
       setIsReady(true);
 
@@ -88,27 +99,31 @@ export default function WaveformEditor({
     });
 
     ws.on("timeupdate", (time: number) => {
-      setCurrTime(time);
+      if (!destroyed) setCurrTime(time);
     });
 
-    ws.on("play", () => setIsPlaying(true));
-    ws.on("pause", () => setIsPlaying(false));
+    ws.on("play", () => !destroyed && setIsPlaying(true));
+    ws.on("pause", () => !destroyed && setIsPlaying(false));
 
     regions.on("region-updated", (region: Region) => {
+      if (destroyed) return;
       setRegionStart(region.start);
       setRegionEnd(region.end);
       activeRegionRef.current = region;
     });
 
     return () => {
+      destroyed = true;
       ws.destroy();
     };
   }, [audioUrl]);
 
   // Update zoom
   useEffect(() => {
-    wavesurferRef.current?.zoom(zoom);
-  }, [zoom]);
+    if (isReady) {
+      wavesurferRef.current?.zoom(zoom);
+    }
+  }, [zoom, isReady]);
 
   const togglePlay = useCallback(() => {
     wavesurferRef.current?.playPause();

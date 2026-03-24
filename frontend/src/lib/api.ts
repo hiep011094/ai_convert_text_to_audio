@@ -28,6 +28,14 @@ export interface VoicePreset {
   id: string;
 }
 
+export interface VoiceProfile {
+  id: string;
+  name: string;
+  calibration_audio: string;
+  codes_count: number;
+  created_at: string;
+}
+
 export async function uploadAudio(file: File): Promise<UploadResult> {
   const formData = new FormData();
   formData.append("file", file);
@@ -67,15 +75,23 @@ export async function trimAudio(
 }
 
 export async function synthesizeVoice(
-  trimmedFilename: string,
   text: string,
-  refText?: string
+  options?: {
+    trimmedFilename?: string;
+    refText?: string;
+    voiceProfileId?: string;
+  }
 ): Promise<SynthesisResult> {
   const formData = new FormData();
-  formData.append("trimmed_filename", trimmedFilename);
   formData.append("text", text);
-  if (refText) {
-    formData.append("ref_text", refText);
+  if (options?.trimmedFilename) {
+    formData.append("trimmed_filename", options.trimmedFilename);
+  }
+  if (options?.refText) {
+    formData.append("ref_text", options.refText);
+  }
+  if (options?.voiceProfileId) {
+    formData.append("voice_profile_id", options.voiceProfileId);
   }
 
   const res = await fetch(`${API_BASE}/api/synthesize`, {
@@ -88,6 +104,53 @@ export async function synthesizeVoice(
     throw new Error(err.detail || "Lỗi khi tổng hợp giọng nói");
   }
   return res.json();
+}
+
+// ── Voice Profile APIs ──────────────────────────────────────────
+
+export async function createVoiceProfile(
+  trimmedFilename: string,
+  profileName: string,
+  refText?: string
+): Promise<VoiceProfile> {
+  const formData = new FormData();
+  formData.append("trimmed_filename", trimmedFilename);
+  formData.append("profile_name", profileName);
+  if (refText) {
+    formData.append("ref_text", refText);
+  }
+
+  const res = await fetch(`${API_BASE}/api/create-voice-profile`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res
+      .json()
+      .catch(() => ({ detail: "Lỗi tạo voice profile" }));
+    throw new Error(err.detail || "Lỗi khi tạo voice profile");
+  }
+  return res.json();
+}
+
+export async function listVoiceProfiles(): Promise<VoiceProfile[]> {
+  const res = await fetch(`${API_BASE}/api/voice-profiles`);
+  const data = await res.json();
+  return data.profiles || [];
+}
+
+export async function deleteVoiceProfile(profileId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/voice-profiles/${profileId}`, {
+    method: "DELETE",
+  });
+
+  if (!res.ok) {
+    const err = await res
+      .json()
+      .catch(() => ({ detail: "Lỗi xóa profile" }));
+    throw new Error(err.detail || "Lỗi khi xóa voice profile");
+  }
 }
 
 export async function checkHealth(): Promise<{
@@ -114,6 +177,10 @@ export function getTrimmedAudioUrl(filename: string): string {
 
 export function getOutputAudioUrl(filename: string): string {
   return `${API_BASE}/api/audio/outputs/${filename}`;
+}
+
+export function getProfileAudioUrl(filename: string): string {
+  return `${API_BASE}/api/audio/profiles/${filename}`;
 }
 
 export function getDownloadUrl(filename: string): string {
