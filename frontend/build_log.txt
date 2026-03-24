@@ -1,0 +1,13 @@
+﻿  Γû▓ Next.js 14.2.35
+
+   Creating an optimized production build ...
+node.exe : memory allocation of 160 bytes failed
+At line:1 char:1
++ & "C:\nvm4w\nodejs/node.exe" "C:\nvm4w\nodejs/node_modules/npm/bin/np 
+...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (memory allocation of 160 by 
+   tes failed:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Next.js build worker exited with code: 3221226505 and signal: null

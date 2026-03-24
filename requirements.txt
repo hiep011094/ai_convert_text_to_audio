@@ -1,0 +1,10 @@
+# Windows: pip install -r requirements.txt --extra-index-url https://pnnbao97.github.io/llama-cpp-python-v0.3.16/cpu/
+# Linux/macOS: pip install -r requirements.txt
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.9
+vieneu
+pydub==0.25.1
+soundfile==0.12.1
+numpy>=1.24.0
+aiofiles==23.2.1

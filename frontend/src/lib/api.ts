@@ -1,0 +1,121 @@
+const API_BASE = "http://localhost:8000";
+
+export interface UploadResult {
+  file_id: string;
+  filename: string;
+  original_name: string;
+  duration: number;
+  sample_rate: number;
+  channels: number;
+  size: number;
+}
+
+export interface TrimResult {
+  trimmed_filename: string;
+  duration: number;
+  start: number;
+  end: number;
+}
+
+export interface SynthesisResult {
+  output_filename: string;
+  processing_time: number;
+  text_length: number;
+}
+
+export interface VoicePreset {
+  description: string;
+  id: string;
+}
+
+export async function uploadAudio(file: File): Promise<UploadResult> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch(`${API_BASE}/api/upload`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi upload" }));
+    throw new Error(err.detail || "Lỗi khi upload file");
+  }
+  return res.json();
+}
+
+export async function trimAudio(
+  filename: string,
+  start: number,
+  end: number
+): Promise<TrimResult> {
+  const formData = new FormData();
+  formData.append("filename", filename);
+  formData.append("start", start.toString());
+  formData.append("end", end.toString());
+
+  const res = await fetch(`${API_BASE}/api/trim`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi cắt audio" }));
+    throw new Error(err.detail || "Lỗi khi cắt audio");
+  }
+  return res.json();
+}
+
+export async function synthesizeVoice(
+  trimmedFilename: string,
+  text: string,
+  refText?: string
+): Promise<SynthesisResult> {
+  const formData = new FormData();
+  formData.append("trimmed_filename", trimmedFilename);
+  formData.append("text", text);
+  if (refText) {
+    formData.append("ref_text", refText);
+  }
+
+  const res = await fetch(`${API_BASE}/api/synthesize`, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Lỗi tổng hợp" }));
+    throw new Error(err.detail || "Lỗi khi tổng hợp giọng nói");
+  }
+  return res.json();
+}
+
+export async function checkHealth(): Promise<{
+  status: string;
+  engine_ready: boolean;
+}> {
+  const res = await fetch(`${API_BASE}/api/health`);
+  return res.json();
+}
+
+export async function listVoices(): Promise<VoicePreset[]> {
+  const res = await fetch(`${API_BASE}/api/voices`);
+  const data = await res.json();
+  return data.voices || [];
+}
+
+export function getUploadedAudioUrl(filename: string): string {
+  return `${API_BASE}/api/audio/uploads/${filename}`;
+}
+
+export function getTrimmedAudioUrl(filename: string): string {
+  return `${API_BASE}/api/audio/trimmed/${filename}`;
+}
+
+export function getOutputAudioUrl(filename: string): string {
+  return `${API_BASE}/api/audio/outputs/${filename}`;
+}
+
+export function getDownloadUrl(filename: string): string {
+  return `${API_BASE}/api/download/${filename}`;
+}

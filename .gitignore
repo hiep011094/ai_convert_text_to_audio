@@ -1,0 +1,25 @@
+# VN-VoiceClone Pro
+venv/
+__pycache__/
+*.pyc
+uploads/
+outputs/
+trimmed/
+*.egg-info/
+dist/
+build/
+
+# Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

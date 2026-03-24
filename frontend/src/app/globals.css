@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 230 25% 7%;
+    --foreground: 210 40% 96%;
+    --card: 230 25% 10%;
+    --card-foreground: 210 40% 96%;
+    --primary: 262 83% 65%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 217 33% 17%;
+    --secondary-foreground: 210 40% 96%;
+    --muted: 217 33% 17%;
+    --muted-foreground: 215 20% 55%;
+    --accent: 192 91% 55%;
+    --accent-foreground: 230 25% 7%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217 33% 20%;
+    --input: 217 33% 20%;
+    --ring: 262 83% 65%;
+    --radius: 0.75rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}
+
+/* ── Custom scrollbar ────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: hsl(var(--background));
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground));
+}
+
+/* ── Wavesurfer overrides ────────────────────────── */
+.wavesurfer-region {
+  border-left: 2px solid hsl(262 83% 65%) !important;
+  border-right: 2px solid hsl(262 83% 65%) !important;
+}
+
+/* ── Glass card effect ───────────────────────────── */
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    hsl(var(--card) / 0.8),
+    hsl(var(--card) / 0.4)
+  );
+  backdrop-filter: blur(12px);
+  border: 1px solid hsl(var(--border) / 0.5);
+}
+
+/* ── Gradient text ───────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, hsl(262 83% 65%), hsl(192 91% 55%));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Glow effects ────────────────────────────────── */
+.glow-primary {
+  box-shadow: 0 0 20px hsl(262 83% 65% / 0.3),
+    0 0 40px hsl(262 83% 65% / 0.1);
+}
+.glow-accent {
+  box-shadow: 0 0 20px hsl(192 91% 55% / 0.3),
+    0 0 40px hsl(192 91% 55% / 0.1);
+}
+
+/* ── Upload dropzone ─────────────────────────────── */
+.dropzone-active {
+  border-color: hsl(262 83% 65%);
+  background: hsl(262 83% 65% / 0.05);
+}
+
+/* ── Pulse animation for recording indicator ─────── */
+@keyframes recording-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.7; }
+}
+.recording-pulse {
+  animation: recording-pulse 1.5s ease-in-out infinite;
+}
