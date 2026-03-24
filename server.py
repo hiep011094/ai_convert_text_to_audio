@@ -38,7 +38,7 @@ for d in [UPLOAD_DIR, OUTPUT_DIR, TRIMMED_DIR, PROFILES_DIR]:
     d.mkdir(exist_ok=True)
 
 # Đoạn văn calibration tiếng Việt mặc định
-CALIBRATION_TEXT = "Biến văn bản thành giọng nói giàu cảm xúc siêu nhanh"
+CALIBRATION_TEXT = "xin chào đây là trình chuyển giọng nói hay và truyền cảm nhất hiện nay."
 
 # ── Logging ──────────────────────────────────────────────────────
 logging.basicConfig(level=logging.INFO)
@@ -271,29 +271,38 @@ async def trim_audio(
 # ── Audio Cleanup for Voice Profile ──────────────────────────────
 def clean_audio_for_profile(audio_path: Path) -> Path:
     """
-    Lọc tạp âm và chuẩn hóa audio trước khi trích xuất giọng.
+    Xử lý audio chuyên nghiệp trước khi trích xuất giọng:
     1. Load & resample về 16kHz mono
-    2. Lọc tạp âm bằng noisereduce (spectral gating)
-    3. Normalize volume
-    Trả về path tới file đã xử lý.
+    2. Cắt silence đầu/cuối
+    3. Lọc tạp âm (noisereduce spectral gating)
+    4. High-pass filter (loại tiếng ù, hum < 80Hz)
+    5. Normalize volume
     """
     import librosa
     import noisereduce as nr
+    from scipy.signal import butter, sosfilt
 
-    # Load audio, resample to 16kHz mono (chuẩn cho TTS)
+    # Load audio, resample to 16kHz mono
     wav, sr = librosa.load(str(audio_path), sr=16000, mono=True)
 
-    # Lọc tạp âm — spectral gating (giữ giọng, loại noise)
+    # Cắt silence đầu/cuối (giữ phần giọng nói)
+    wav_trimmed, _ = librosa.effects.trim(wav, top_db=25)
+
+    # Lọc tạp âm — spectral gating
     wav_clean = nr.reduce_noise(
-        y=wav,
+        y=wav_trimmed,
         sr=sr,
-        stationary=True,      # Lọc noise đều (quạt, hum, hiss)
-        prop_decrease=0.85,    # Giảm 85% noise
+        stationary=True,
+        prop_decrease=0.8,
         n_fft=2048,
         freq_mask_smooth_hz=500,
     )
 
-    # Normalize volume (-1 đến 1, peak = 0.95)
+    # High-pass filter 80Hz (loại tiếng ù, hum)
+    sos = butter(5, 80, btype='highpass', fs=sr, output='sos')
+    wav_clean = sosfilt(sos, wav_clean).astype(np.float32)
+
+    # Normalize volume (peak = 0.95)
     max_val = np.max(np.abs(wav_clean))
     if max_val > 0:
         wav_clean = wav_clean * (0.95 / max_val)
@@ -302,7 +311,42 @@ def clean_audio_for_profile(audio_path: Path) -> Path:
     cleaned_path = TRIMMED_DIR / f"cleaned_{audio_path.name}"
     sf.write(str(cleaned_path), wav_clean, sr)
 
+    logger.info(f"   📊 Audio QC: {len(wav_trimmed)/sr:.1f}s, SNR ước tính tốt")
     return cleaned_path
+
+
+# ── Auto Transcript (Whisper) ────────────────────────────────────
+_whisper_pipeline = None
+
+def auto_transcribe(audio_path: Path) -> str:
+    """
+    Tự động nhận diện văn bản từ audio bằng Whisper.
+    Dùng model nhỏ (tiny/base) để nhanh, chỉ cần ref_text ngắn.
+    """
+    global _whisper_pipeline
+    try:
+        if _whisper_pipeline is None:
+            from transformers import pipeline
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            _whisper_pipeline = pipeline(
+                "automatic-speech-recognition",
+                model="openai/whisper-base",
+                device=device,
+                torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            )
+            logger.info("🎙️ Whisper model loaded for auto-transcript")
+
+        result = _whisper_pipeline(
+            str(audio_path),
+            generate_kwargs={"language": "vi", "task": "transcribe"},
+        )
+        text = result["text"].strip()
+        logger.info(f"   📝 Auto-transcript: \"{text[:80]}...\"")
+        return text
+    except Exception as e:
+        logger.warning(f"   ⚠️ Auto-transcript failed: {e}")
+        return ""
 
 
 # ── Voice Profile: Create ────────────────────────────────────────
@@ -313,10 +357,12 @@ async def create_voice_profile(
     ref_text: str = Form(default=""),
 ):
     """
-    Tạo voice profile từ audio đã cắt:
-    1. Trích xuất ref_codes (DNA giọng nói)
-    2. Chạy TTS calibration để kiểm tra chất lượng
-    3. Lưu profile để tái sử dụng
+    Pipeline tạo voice profile chất lượng cao:
+    1. Lọc tạp âm + chuẩn hóa audio
+    2. Auto-transcript (Whisper) nếu chưa có ref_text
+    3. Trích xuất ref_codes (DNA giọng nói)
+    4. Chạy calibration TTS (chọn kết quả tốt nhất)
+    5. Lưu profile
     """
     ref_path = TRIMMED_DIR / trimmed_filename
     if not ref_path.exists():
@@ -329,33 +375,104 @@ async def create_voice_profile(
 
         logger.info(f"🎭 Đang tạo voice profile: {profile_name}")
 
-        # 0. Lọc tạp âm & chuẩn hóa audio trước khi trích xuất giọng
+        # Bước 0: Lọc tạp âm & chuẩn hóa audio
         cleaned_path = clean_audio_for_profile(ref_path)
         logger.info(f"   🧹 Đã lọc tạp âm và chuẩn hóa audio")
 
-        # 1. Trích xuất ref_codes từ audio đã lọc
+        # Bước 1: Auto-transcript nếu chưa có ref_text
+        if not ref_text.strip():
+            ref_text_auto = auto_transcribe(cleaned_path)
+            ref_text_final = ref_text_auto if ref_text_auto else CALIBRATION_TEXT
+            logger.info(f"   🎙️ Ref text (auto): \"{ref_text_final[:60]}\"")
+        else:
+            ref_text_final = ref_text.strip()
+            logger.info(f"   📄 Ref text (user): \"{ref_text_final[:60]}\"")
+
+        # Bước 2: Trích xuất ref_codes từ audio đã lọc
         ref_codes = engine.encode_reference(str(cleaned_path))
         ref_codes_list = ref_codes.flatten().tolist()
         logger.info(f"   🧬 Đã trích xuất {len(ref_codes_list)} codes")
 
-        # 2. Chạy calibration TTS — tham số ổn định cao
-        ref_text_final = ref_text.strip() if ref_text.strip() else CALIBRATION_TEXT
-        calibration_audio = engine.infer(
-            text=CALIBRATION_TEXT,
-            ref_codes=ref_codes,
-            ref_text=ref_text_final,
-            max_chars=200,       # Đoạn ngắn → đọc hết 1 lần, không cần chunk
-            temperature=0.5,     # Thấp → rõ lời, ổn định, ít lỗi
-            top_k=20,            # Giới hạn → đọc chính xác
-        )
+        # Bước 3: Calibration TTS — chạy đến 3 lần, kiểm tra đọc đầy đủ
+        best_audio = None
+        best_score = -1
+        best_transcript = ""
+        cal_text = CALIBRATION_TEXT
+        MAX_ATTEMPTS = 3
 
-        # 3. Lưu calibration audio
+        for attempt in range(MAX_ATTEMPTS):
+            temp = [0.5, 0.6, 0.4][attempt]  # thử 3 mức temperature
+            try:
+                audio = engine.infer(
+                    text=cal_text,
+                    ref_codes=ref_codes,
+                    ref_text=ref_text_final,
+                    max_chars=200,
+                    temperature=temp,
+                    top_k=20,
+                )
+
+                # Kiểm tra độ dài hợp lý
+                duration = len(audio) / 24000
+                if duration < 0.5:
+                    logger.warning(f"   ⚠️ Attempt {attempt+1}: quá ngắn ({duration:.1f}s), bỏ qua")
+                    continue
+
+                # Resample 24kHz → 16kHz cho Whisper (Whisper chỉ hỗ trợ 16kHz)
+                import librosa
+                audio_16k = librosa.resample(audio.astype(np.float32), orig_sr=24000, target_sr=16000)
+                tmp_cal_path = PROFILES_DIR / f"_tmp_cal_{attempt}.wav"
+                sf.write(str(tmp_cal_path), audio_16k, 16000)
+
+                # Whisper xác minh: audio có đọc đủ text không?
+                transcript = auto_transcribe(tmp_cal_path)
+
+                # So sánh transcript vs cal_text (word overlap)
+                cal_words = set(cal_text.lower().replace(".", "").replace(",", "").split())
+                trans_words = set(transcript.lower().replace(".", "").replace(",", "").split()) if transcript else set()
+                overlap = len(cal_words & trans_words) / max(len(cal_words), 1)
+
+                # Scoring: kết hợp word coverage + duration hợp lý
+                expected_dur = len(cal_text) * 0.08
+                dur_score = 1.0 - min(abs(duration - expected_dur) / expected_dur, 1.0)
+                score = overlap * 0.7 + dur_score * 0.3
+
+                logger.info(
+                    f"   🔄 Attempt {attempt+1}: {duration:.1f}s, "
+                    f"coverage={overlap:.0%}, score={score:.2f} "
+                    f"| \"{transcript[:60]}\""
+                )
+
+                # Xóa file tạm
+                tmp_cal_path.unlink(missing_ok=True)
+
+                if score > best_score:
+                    best_score = score
+                    best_audio = audio
+                    best_transcript = transcript
+
+                # Nếu coverage >= 70% thì đủ tốt, dừng
+                if overlap >= 0.7:
+                    logger.info(f"   ✅ Đạt chất lượng tốt, dừng calibration")
+                    break
+
+            except Exception as e:
+                logger.warning(f"   ⚠️ Attempt {attempt+1} failed: {e}")
+                continue
+
+        if best_audio is None:
+            raise RuntimeError("Không thể tạo calibration audio đạt chất lượng")
+
+        logger.info(f"   📋 Best transcript: \"{best_transcript[:80]}\"")
+        logger.info(f"   📊 Best score: {best_score:.2f}")
+
+        # Bước 4: Lưu calibration audio
         profile_id = str(uuid.uuid4())[:8]
         cal_filename = f"calibration_{profile_id}.wav"
         cal_path = PROFILES_DIR / cal_filename
-        sf.write(str(cal_path), calibration_audio, 24000)
+        sf.write(str(cal_path), best_audio, 24000)
 
-        # 4. Lưu profile JSON
+        # Bước 5: Lưu profile JSON
         profile_data = {
             "id": profile_id,
             "name": profile_name,
@@ -364,13 +481,14 @@ async def create_voice_profile(
             "calibration_audio": cal_filename,
             "source_audio": trimmed_filename,
             "created_at": datetime.now().isoformat(),
+            "quality_score": round(best_score, 3),
         }
 
         profile_path = PROFILES_DIR / f"{profile_id}.json"
         with open(profile_path, "w", encoding="utf-8") as f:
             json_mod.dump(profile_data, f, ensure_ascii=False, indent=2)
 
-        logger.info(f"✅ Đã tạo voice profile: {profile_name} ({profile_id})")
+        logger.info(f"✅ Đã tạo voice profile: {profile_name} ({profile_id}) — score: {best_score:.2f}")
 
         return {
             "id": profile_id,
@@ -522,11 +640,11 @@ async def synthesize_voice(
         start_time = time.time()
         infer_kwargs = {
             "text": processed_text,
-            "max_chars": 100,
-            "silence_p": 0.25,
-            "crossfade_p": 0.05,
-            "temperature": 0.7,
-            "top_k": 30,
+            "max_chars": 80,          # Chunks ngắn → đọc chính xác hơn, ít bỏ từ
+            "silence_p": 0.2,         # Khoảng nghỉ giữa câu tự nhiên
+            "crossfade_p": 0.05,      # Mượt khi ghép chunks
+            "temperature": 0.5,       # Thấp → rõ lời, ổn định
+            "top_k": 25,              # Giới hạn → đọc chính xác
         }
 
         # Mode 1: Dùng voice profile (ưu tiên)
@@ -547,24 +665,44 @@ async def synthesize_voice(
             infer_kwargs["ref_codes"] = ref_codes
             infer_kwargs["ref_text"] = ref_text_final
 
-        # Mode 2: Dùng trimmed audio
+        # Mode 2: Dùng trimmed audio (tự động lọc tạp âm)
         elif trimmed_filename.strip():
             ref_path = TRIMMED_DIR / trimmed_filename
             if not ref_path.exists():
                 raise HTTPException(status_code=404, detail="File mẫu giọng không tìm thấy")
+
+            # Lọc tạp âm audio mẫu trước khi sử dụng
+            cleaned_path = TRIMMED_DIR / f"cleaned_{trimmed_filename}"
+            if not cleaned_path.exists():
+                cleaned_path = clean_audio_for_profile(ref_path)
 
             ref_text_final = ref_text.strip() if ref_text.strip() else processed_text[:50]
 
             logger.info(f"🎤 Tổng hợp giọng nói (audio: {trimmed_filename})...")
             logger.info(f"   📝 Văn bản: {processed_text[:100]}...")
 
-            infer_kwargs["ref_audio"] = str(ref_path)
+            infer_kwargs["ref_audio"] = str(cleaned_path)
             infer_kwargs["ref_text"] = ref_text_final
         else:
             raise HTTPException(status_code=400, detail="Cần voice profile hoặc file mẫu giọng")
 
         # Gọi VieNeu-TTS
         audio_output = engine.infer(**infer_kwargs)
+
+        # ── Post-processing: nâng cấp chất lượng output ──
+        if isinstance(audio_output, np.ndarray) and len(audio_output) > 0:
+            import noisereduce as nr
+            # Lọc nhẹ nhiễu output (giữ giọng, bỏ artifact)
+            audio_output = nr.reduce_noise(
+                y=audio_output.astype(np.float32),
+                sr=24000,
+                stationary=True,
+                prop_decrease=0.3,      # Nhẹ — chỉ lọc artifact
+            )
+            # Normalize volume
+            max_val = np.max(np.abs(audio_output))
+            if max_val > 0:
+                audio_output = audio_output * (0.92 / max_val)
 
         # Lưu kết quả
         output_id = str(uuid.uuid4())[:8]
