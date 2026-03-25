@@ -41,6 +41,7 @@ export default function VoiceProfileList({
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [profileEngine, setProfileEngine] = useState<"vieneu" | "f5-tts">("f5-tts");
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // Load profiles on mount
@@ -67,7 +68,8 @@ export default function VoiceProfileList({
       const newProfile = await createVoiceProfile(
         trimmedFilename,
         profileName.trim(),
-        refText || undefined
+        refText || undefined,
+        profileEngine
       );
       setProfiles((prev) => [newProfile, ...prev]);
       setProfileName("");
@@ -160,6 +162,39 @@ export default function VoiceProfileList({
               className="w-full px-3 py-2 text-sm rounded-lg bg-secondary/50 border border-border/50 focus:border-primary/50 focus:outline-none transition-colors"
               autoFocus
             />
+
+            {/* Engine Toggle */}
+            <div className="flex items-center gap-1.5 p-1 rounded-lg bg-secondary/30 border border-border/30">
+              <button
+                type="button"
+                onClick={() => setProfileEngine("f5-tts")}
+                className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                  profileEngine === "f5-tts"
+                    ? "bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                🚀 F5-TTS
+              </button>
+              <button
+                type="button"
+                onClick={() => setProfileEngine("vieneu")}
+                className={`flex-1 px-2 py-1.5 rounded-md text-xs font-medium transition-all duration-200 ${
+                  profileEngine === "vieneu"
+                    ? "bg-gradient-to-r from-violet-500 to-purple-500 text-white shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                ⚡ VieNeu
+              </button>
+            </div>
+            {profileEngine === "f5-tts" && (
+              <p className="text-xs text-emerald-400">✨ Chất lượng cao, đọc đầy đủ (chậm hơn ~30-60s)</p>
+            )}
+            {profileEngine === "vieneu" && (
+              <p className="text-xs text-violet-400">⚡ Nhanh (~10-20s), phù hợp cho test nhanh</p>
+            )}
+
             <div className="flex gap-2">
               <Button
                 variant="glow"
@@ -193,7 +228,7 @@ export default function VoiceProfileList({
             </div>
             {isCreating && (
               <p className="text-xs text-muted-foreground animate-pulse">
-                ⏳ AI đang phân tích giọng nói và tạo calibration... (~10-30s)
+                ⏳ {profileEngine === "f5-tts" ? "F5-TTS đang clone giọng nói... (~30-60s)" : "AI đang phân tích giọng nói... (~10-30s)"}
               </p>
             )}
           </div>

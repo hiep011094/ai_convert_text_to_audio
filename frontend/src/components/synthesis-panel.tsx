@@ -38,6 +38,7 @@ export default function SynthesisPanel({
   const [isPlaying, setIsPlaying] = useState(false);
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
+  const [engine, setEngine] = useState<"vieneu" | "f5-tts">("f5-tts");
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const canSynthesize =
@@ -56,6 +57,7 @@ export default function SynthesisPanel({
         trimmedFilename: trimmedFilename || undefined,
         refText: refText || undefined,
         voiceProfileId: voiceProfileId || undefined,
+        engine,
       });
       setResult(res);
     } catch (err: unknown) {
@@ -101,6 +103,36 @@ export default function SynthesisPanel({
 
   return (
     <div className="space-y-4">
+      {/* Engine Toggle */}
+      <div className="flex items-center gap-2 p-1 rounded-xl bg-secondary/50 border border-border/50">
+        <button
+          type="button"
+          onClick={() => setEngine("f5-tts")}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+            engine === "f5-tts"
+              ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/25"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          🚀 F5-TTS — Chất lượng cao
+        </button>
+        <button
+          type="button"
+          onClick={() => setEngine("vieneu")}
+          className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all duration-200 ${
+            engine === "vieneu"
+              ? "bg-gradient-to-r from-primary to-accent text-white shadow-lg shadow-primary/25"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          ⚡ VieNeu — Nhanh
+        </button>
+      </div>
+
+      {engine === "f5-tts" && (
+        <p className="text-xs text-emerald-400 px-1">✨ F5-TTS: Voice cloning chất lượng cao, đọc đầy đủ 100% văn bản</p>
+      )}
+
       {/* Synthesize Button */}
       <Button
         variant="glow"

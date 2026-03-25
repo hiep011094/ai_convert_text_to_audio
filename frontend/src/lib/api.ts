@@ -1,4 +1,4 @@
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://localhost:12345";
 
 export interface UploadResult {
   file_id: string;
@@ -80,6 +80,7 @@ export async function synthesizeVoice(
     trimmedFilename?: string;
     refText?: string;
     voiceProfileId?: string;
+    engine?: "vieneu" | "f5-tts";
   }
 ): Promise<SynthesisResult> {
   const formData = new FormData();
@@ -94,7 +95,12 @@ export async function synthesizeVoice(
     formData.append("voice_profile_id", options.voiceProfileId);
   }
 
-  const res = await fetch(`${API_BASE}/api/synthesize`, {
+  // Choose API endpoint based on engine
+  const endpoint = options?.engine === "f5-tts"
+    ? `${API_BASE}/api/synthesize-f5`
+    : `${API_BASE}/api/synthesize`;
+
+  const res = await fetch(endpoint, {
     method: "POST",
     body: formData,
   });
@@ -111,7 +117,8 @@ export async function synthesizeVoice(
 export async function createVoiceProfile(
   trimmedFilename: string,
   profileName: string,
-  refText?: string
+  refText?: string,
+  engine?: "vieneu" | "f5-tts"
 ): Promise<VoiceProfile> {
   const formData = new FormData();
   formData.append("trimmed_filename", trimmedFilename);
@@ -120,7 +127,11 @@ export async function createVoiceProfile(
     formData.append("ref_text", refText);
   }
 
-  const res = await fetch(`${API_BASE}/api/create-voice-profile`, {
+  const endpoint = engine === "f5-tts"
+    ? `${API_BASE}/api/create-voice-profile-f5`
+    : `${API_BASE}/api/create-voice-profile`;
+
+  const res = await fetch(endpoint, {
     method: "POST",
     body: formData,
   });

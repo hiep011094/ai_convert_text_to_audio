@@ -21,7 +21,7 @@ if not exist "trimmed" mkdir trimmed
 
 :: Start Backend
 echo [1/2] Đang khởi động Backend (FastAPI + VieNeu-TTS)...
-echo       API server: http://localhost:8000
+echo       API server: http://localhost:12345
 start "VN-VoiceClone Backend" cmd /k "call venv\Scripts\activate.bat && python server.py"
 
 :: Wait for backend to initialize
@@ -41,7 +41,7 @@ echo ╔════════════════════════
 echo ║            Ứng dụng đã sẵn sàng! ✓           ║
 echo ║                                               ║
 echo ║  🌐 Mở trình duyệt: http://localhost:3000    ║
-echo ║  📡 API Backend:     http://localhost:8000    ║
+echo ║  📡 API Backend:     http://localhost:12345   ║
 echo ║                                               ║
 echo ║  Nhấn bất kỳ phím nào để mở trình duyệt...  ║
 echo ╚═══════════════════════════════════════════════╝
