@@ -1,0 +1,12 @@
+{
+  "id": "9a4c8b76",
+  "name": "hip",
+  "ref_codes": [],
+  "ref_text": "xin chào đây là trình chuyển giọng nói hay và truyền cảm nhất hiện nay.",
+  "calibration_audio": "calibration_9a4c8b76.wav",
+  "source_audio": "trimmed_8cfc8d8a.wav",
+  "created_at": "2026-03-25T21:18:08.742890",
+  "quality_score": 0.31,
+  "coverage": 0.0,
+  "engine": "f5-tts"
+}

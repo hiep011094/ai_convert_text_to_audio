@@ -1,0 +1,12 @@
+{
+  "id": "2b18fdf8",
+  "name": "ádasdas",
+  "ref_codes": [],
+  "ref_text": "xin chào đây là trình chuyển giọng nói hay và truyền cảm nhất hiện nay.",
+  "calibration_audio": "calibration_2b18fdf8.wav",
+  "source_audio": "trimmed_eb671c30.wav",
+  "created_at": "2026-03-25T21:03:32.078143",
+  "quality_score": 0.247,
+  "coverage": 0.0,
+  "engine": "f5-tts"
+}

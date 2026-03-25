@@ -1,0 +1,11 @@
+{
+  "id": "41f325f4",
+  "name": "dfghdf",
+  "ref_codes": [],
+  "ref_text": "xin chào đây là trình chuyển giọng nói hay và truyền cảm nhất hiện nay.",
+  "calibration_audio": "calibration_41f325f4.wav",
+  "source_audio": "trimmed_e954dd19.wav",
+  "created_at": "2026-03-25T19:59:41.506391",
+  "quality_score": 0.159,
+  "engine": "f5-tts"
+}

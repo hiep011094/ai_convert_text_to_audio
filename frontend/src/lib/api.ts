@@ -21,6 +21,19 @@ export interface SynthesisResult {
   output_filename: string;
   processing_time: number;
   text_length: number;
+  audio_duration?: number;
+  quality?: string;
+  speed?: number;
+  coverage?: number;
+  task_id?: string;
+  engine?: string;
+}
+
+export interface SynthesisProgress {
+  status: string;
+  progress: number;
+  message: string;
+  task_id?: string;
 }
 
 export interface VoicePreset {
@@ -34,6 +47,10 @@ export interface VoiceProfile {
   calibration_audio: string;
   codes_count: number;
   created_at: string;
+  engine?: string;
+  quality_score?: number;
+  coverage?: number;
+  task_id?: string;
 }
 
 export async function uploadAudio(file: File): Promise<UploadResult> {
@@ -81,6 +98,8 @@ export async function synthesizeVoice(
     refText?: string;
     voiceProfileId?: string;
     engine?: "vieneu" | "f5-tts";
+    speed?: number;
+    quality?: "fast" | "standard" | "high";
   }
 ): Promise<SynthesisResult> {
   const formData = new FormData();
@@ -93,6 +112,12 @@ export async function synthesizeVoice(
   }
   if (options?.voiceProfileId) {
     formData.append("voice_profile_id", options.voiceProfileId);
+  }
+  if (options?.speed !== undefined) {
+    formData.append("speed", options.speed.toString());
+  }
+  if (options?.quality) {
+    formData.append("quality", options.quality);
   }
 
   // Choose API endpoint based on engine
@@ -109,6 +134,11 @@ export async function synthesizeVoice(
     const err = await res.json().catch(() => ({ detail: "Lỗi tổng hợp" }));
     throw new Error(err.detail || "Lỗi khi tổng hợp giọng nói");
   }
+  return res.json();
+}
+
+export async function getSynthesisProgress(taskId: string): Promise<SynthesisProgress> {
+  const res = await fetch(`${API_BASE}/api/synthesis-progress/${taskId}`);
   return res.json();
 }
 

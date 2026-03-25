@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   User,
   Trash2,
@@ -10,6 +10,8 @@ import {
   Dna,
   Loader2,
   CheckCircle2,
+  Shield,
+  Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +20,7 @@ import {
   listVoiceProfiles,
   deleteVoiceProfile,
   getProfileAudioUrl,
+  getSynthesisProgress,
 } from "@/lib/api";
 
 interface VoiceProfileListProps {
@@ -42,11 +45,23 @@ export default function VoiceProfileList({
   const [error, setError] = useState<string | null>(null);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [profileEngine, setProfileEngine] = useState<"vieneu" | "f5-tts">("f5-tts");
+  const [createProgress, setCreateProgress] = useState(0);
+  const [createMessage, setCreateMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load profiles on mount
   useEffect(() => {
     loadProfiles();
+  }, []);
+
+  // Cleanup progress polling on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+    };
   }, []);
 
   const loadProfiles = async () => {
@@ -58,11 +73,34 @@ export default function VoiceProfileList({
     }
   };
 
+  const startProgressPolling = useCallback((taskId: string) => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    progressIntervalRef.current = setInterval(async () => {
+      try {
+        const p = await getSynthesisProgress(taskId);
+        setCreateProgress(p.progress);
+        setCreateMessage(p.message);
+        if (p.status === "done" || p.status === "error") {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
+        }
+      } catch {
+        // Ignore poll errors
+      }
+    }, 1000);
+  }, []);
+
   const handleCreate = async () => {
     if (!trimmedFilename || !profileName.trim()) return;
 
     setIsCreating(true);
     setError(null);
+    setCreateProgress(0);
+    setCreateMessage("Đang bắt đầu...");
 
     try {
       const newProfile = await createVoiceProfile(
@@ -71,17 +109,29 @@ export default function VoiceProfileList({
         refText || undefined,
         profileEngine
       );
+
+      // Start progress polling if task_id available
+      if (newProfile.task_id) {
+        startProgressPolling(newProfile.task_id);
+      }
+
       setProfiles((prev) => [newProfile, ...prev]);
       setProfileName("");
       setShowCreateForm(false);
       onSelectProfile(newProfile.id);
       onProfileCreated?.();
+      setCreateProgress(100);
+      setCreateMessage("Hoàn tất!");
     } catch (err: unknown) {
       setError(
         err instanceof Error ? err.message : "Lỗi tạo voice profile"
       );
     } finally {
       setIsCreating(false);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
     }
   };
 
@@ -122,6 +172,13 @@ export default function VoiceProfileList({
     } catch {
       return "";
     }
+  };
+
+  const getQualityBadge = (score?: number) => {
+    if (score === undefined || score < 0) return null;
+    if (score >= 0.8) return { label: "Tốt", color: "text-emerald-400 bg-emerald-400/10 border-emerald-400/20" };
+    if (score >= 0.5) return { label: "Khá", color: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20" };
+    return { label: "Thấp", color: "text-orange-400 bg-orange-400/10 border-orange-400/20" };
   };
 
   return (
@@ -189,7 +246,7 @@ export default function VoiceProfileList({
               </button>
             </div>
             {profileEngine === "f5-tts" && (
-              <p className="text-xs text-emerald-400">✨ Chất lượng cao, đọc đầy đủ (chậm hơn ~30-60s)</p>
+              <p className="text-xs text-emerald-400">✨ Chất lượng cao, tự kiểm tra Whisper (~30-60s)</p>
             )}
             {profileEngine === "vieneu" && (
               <p className="text-xs text-violet-400">⚡ Nhanh (~10-20s), phù hợp cho test nhanh</p>
@@ -206,7 +263,7 @@ export default function VoiceProfileList({
                 {isCreating ? (
                   <>
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    Đang tạo giọng mẫu...
+                    Đang tạo...
                   </>
                 ) : (
                   <>
@@ -222,14 +279,27 @@ export default function VoiceProfileList({
                   setShowCreateForm(false);
                   setError(null);
                 }}
+                disabled={isCreating}
               >
                 Hủy
               </Button>
             </div>
+
+            {/* Progress Bar */}
             {isCreating && (
-              <p className="text-xs text-muted-foreground animate-pulse">
-                ⏳ {profileEngine === "f5-tts" ? "F5-TTS đang clone giọng nói... (~30-60s)" : "AI đang phân tích giọng nói... (~10-30s)"}
-              </p>
+              <div className="space-y-1.5 animate-slide-up">
+                <div className="relative w-full h-2 bg-secondary rounded-full overflow-hidden">
+                  <div
+                    className="absolute top-0 left-0 h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-500 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${Math.max(createProgress, 5)}%` }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-muted-foreground">{createMessage}</p>
+                  <span className="text-xs font-mono text-emerald-400">{createProgress}%</span>
+                </div>
+              </div>
             )}
           </div>
         )}
@@ -250,76 +320,96 @@ export default function VoiceProfileList({
           </div>
         ) : (
           <div className="space-y-2">
-            {profiles.map((profile) => (
-              <div
-                key={profile.id}
-                onClick={() => onSelectProfile(
-                  selectedProfileId === profile.id ? null : profile.id
-                )}
-                className={`relative flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${
-                  selectedProfileId === profile.id
-                    ? "bg-primary/10 border-primary/30 shadow-sm shadow-primary/10"
-                    : "bg-secondary/30 border-border/50 hover:bg-secondary/50 hover:border-border"
-                }`}
-              >
-                {/* Avatar */}
+            {profiles.map((profile) => {
+              const badge = getQualityBadge(profile.quality_score);
+              return (
                 <div
-                  className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${
+                  key={profile.id}
+                  onClick={() => onSelectProfile(
+                    selectedProfileId === profile.id ? null : profile.id
+                  )}
+                  className={`relative flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${
                     selectedProfileId === profile.id
-                      ? "bg-primary/20 text-primary"
-                      : "bg-secondary text-muted-foreground"
+                      ? "bg-primary/10 border-primary/30 shadow-sm shadow-primary/10"
+                      : "bg-secondary/30 border-border/50 hover:bg-secondary/50 hover:border-border"
                   }`}
                 >
-                  {selectedProfileId === profile.id ? (
-                    <CheckCircle2 className="w-4 h-4" />
-                  ) : (
-                    <User className="w-4 h-4" />
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{profile.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDate(profile.created_at)} • {profile.codes_count}{" "}
-                    codes
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      togglePlay(profile);
-                    }}
-                    className="p-1.5 rounded-lg hover:bg-secondary/80 transition-colors text-muted-foreground hover:text-foreground"
-                    title="Nghe calibration"
+                  {/* Avatar */}
+                  <div
+                    className={`flex items-center justify-center w-9 h-9 rounded-lg shrink-0 ${
+                      selectedProfileId === profile.id
+                        ? "bg-primary/20 text-primary"
+                        : "bg-secondary text-muted-foreground"
+                    }`}
                   >
-                    {playingId === profile.id ? (
-                      <Pause className="w-3.5 h-3.5" />
+                    {selectedProfileId === profile.id ? (
+                      <CheckCircle2 className="w-4 h-4" />
                     ) : (
-                      <Play className="w-3.5 h-3.5" />
+                      <User className="w-4 h-4" />
                     )}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleDelete(profile.id);
-                    }}
-                    className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
-                    title="Xóa profile"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </div>
+
+                  {/* Info */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{profile.name}</p>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
+                      <span>{formatDate(profile.created_at)}</span>
+                      {/* Engine badge */}
+                      {profile.engine && (
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${
+                          profile.engine === "f5-tts"
+                            ? "text-emerald-400 bg-emerald-400/10 border-emerald-400/20"
+                            : "text-violet-400 bg-violet-400/10 border-violet-400/20"
+                        }`}>
+                          <Cpu className="w-2.5 h-2.5" />
+                          {profile.engine === "f5-tts" ? "F5" : "VN"}
+                        </span>
+                      )}
+                      {/* Quality badge */}
+                      {badge && (
+                        <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[10px] font-medium border ${badge.color}`}>
+                          <Shield className="w-2.5 h-2.5" />
+                          {badge.label}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        togglePlay(profile);
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-secondary/80 transition-colors text-muted-foreground hover:text-foreground"
+                      title="Nghe calibration"
+                    >
+                      {playingId === profile.id ? (
+                        <Pause className="w-3.5 h-3.5" />
+                      ) : (
+                        <Play className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(profile.id);
+                      }}
+                      className="p-1.5 rounded-lg hover:bg-destructive/10 transition-colors text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100"
+                      title="Xóa profile"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      {/* Hidden audio element - outside main div to avoid hydration issues */}
+      {/* Hidden audio element */}
       <audio
         ref={audioRef}
         onEnded={() => setPlayingId(null)}

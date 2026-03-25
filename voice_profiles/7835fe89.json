@@ -1,0 +1,12 @@
+{
+  "id": "7835fe89",
+  "name": "1233",
+  "ref_codes": [],
+  "ref_text": "xin chào đây là trình chuyển giọng nói hay và truyền cảm nhất hiện nay.",
+  "calibration_audio": "calibration_7835fe89.wav",
+  "source_audio": "trimmed_bb5a0e29.wav",
+  "created_at": "2026-03-25T21:05:47.633043",
+  "quality_score": 0.161,
+  "coverage": 0.0,
+  "engine": "f5-tts"
+}

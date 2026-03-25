@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import {
   Download,
   Play,
@@ -9,10 +9,14 @@ import {
   FileText,
   Sparkles,
   CheckCircle2,
+  Gauge,
+  Zap,
+  Crown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   synthesizeVoice,
+  getSynthesisProgress,
   SynthesisResult,
   getOutputAudioUrl,
   getDownloadUrl,
@@ -25,6 +29,14 @@ interface SynthesisPanelProps {
   refText: string;
   voiceProfileId: string | null;
 }
+
+type Quality = "fast" | "standard" | "high";
+
+const QUALITY_OPTIONS: { value: Quality; label: string; icon: React.ReactNode; desc: string }[] = [
+  { value: "fast", label: "Nhanh", icon: <Zap className="w-3.5 h-3.5" />, desc: "~2× nhanh hơn" },
+  { value: "standard", label: "Chuẩn", icon: <Gauge className="w-3.5 h-3.5" />, desc: "Cân bằng" },
+  { value: "high", label: "Cao cấp", icon: <Crown className="w-3.5 h-3.5" />, desc: "Chất lượng tốt nhất" },
+];
 
 export default function SynthesisPanel({
   trimmedFilename,
@@ -39,10 +51,45 @@ export default function SynthesisPanel({
   const [audioCurrentTime, setAudioCurrentTime] = useState(0);
   const [audioDuration, setAudioDuration] = useState(0);
   const [engine, setEngine] = useState<"vieneu" | "f5-tts">("f5-tts");
+  const [speed, setSpeed] = useState(1.0);
+  const [quality, setQuality] = useState<Quality>("standard");
+  const [progress, setProgress] = useState(0);
+  const [progressMessage, setProgressMessage] = useState("");
   const audioRef = useRef<HTMLAudioElement>(null);
+  const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const canSynthesize =
     (trimmedFilename || voiceProfileId) && text.trim().length > 0;
+
+  // Cleanup progress polling on unmount
+  useEffect(() => {
+    return () => {
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+      }
+    };
+  }, []);
+
+  const startProgressPolling = useCallback((taskId: string) => {
+    if (progressIntervalRef.current) {
+      clearInterval(progressIntervalRef.current);
+    }
+    progressIntervalRef.current = setInterval(async () => {
+      try {
+        const p = await getSynthesisProgress(taskId);
+        setProgress(p.progress);
+        setProgressMessage(p.message);
+        if (p.status === "done" || p.status === "error") {
+          if (progressIntervalRef.current) {
+            clearInterval(progressIntervalRef.current);
+            progressIntervalRef.current = null;
+          }
+        }
+      } catch {
+        // Ignore poll errors
+      }
+    }, 1000);
+  }, []);
 
   const handleSynthesize = async () => {
     if (!text.trim()) return;
@@ -51,6 +98,8 @@ export default function SynthesisPanel({
     setIsSynthesizing(true);
     setError(null);
     setResult(null);
+    setProgress(0);
+    setProgressMessage("Đang bắt đầu...");
 
     try {
       const res = await synthesizeVoice(text, {
@@ -58,12 +107,26 @@ export default function SynthesisPanel({
         refText: refText || undefined,
         voiceProfileId: voiceProfileId || undefined,
         engine,
+        speed: engine === "f5-tts" ? speed : undefined,
+        quality: engine === "f5-tts" ? quality : undefined,
       });
+
+      // Start polling progress if we have task_id
+      if (res.task_id) {
+        startProgressPolling(res.task_id);
+      }
+
       setResult(res);
+      setProgress(100);
+      setProgressMessage("Hoàn tất!");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Lỗi tổng hợp giọng nói");
     } finally {
       setIsSynthesizing(false);
+      if (progressIntervalRef.current) {
+        clearInterval(progressIntervalRef.current);
+        progressIntervalRef.current = null;
+      }
     }
   };
 
@@ -129,8 +192,70 @@ export default function SynthesisPanel({
         </button>
       </div>
 
+      {/* F5-TTS Options */}
       {engine === "f5-tts" && (
-        <p className="text-xs text-emerald-400 px-1">✨ F5-TTS: Voice cloning chất lượng cao, đọc đầy đủ 100% văn bản</p>
+        <div className="space-y-3 p-3 rounded-xl bg-secondary/30 border border-border/30">
+          {/* Quality Selector */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-medium text-muted-foreground">Chất lượng</label>
+            <div className="flex gap-1.5">
+              {QUALITY_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setQuality(opt.value)}
+                  className={`flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-lg text-xs transition-all duration-200 ${
+                    quality === opt.value
+                      ? "bg-gradient-to-br from-primary/20 to-accent/20 border border-primary/40 text-foreground shadow-sm"
+                      : "border border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/50"
+                  }`}
+                >
+                  <span className="flex items-center gap-1 font-medium">
+                    {opt.icon} {opt.label}
+                  </span>
+                  <span className="text-[10px] opacity-70">{opt.desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Speed Slider */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-muted-foreground">Tốc độ đọc</label>
+              <span className="text-xs font-mono text-primary font-semibold">{speed.toFixed(1)}×</span>
+            </div>
+            <div className="relative">
+              <input
+                type="range"
+                min="0.5"
+                max="2.0"
+                step="0.1"
+                value={speed}
+                onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                className="w-full h-2 rounded-full appearance-none cursor-pointer
+                  bg-gradient-to-r from-blue-500/30 via-primary/30 to-orange-500/30
+                  [&::-webkit-slider-thumb]:appearance-none
+                  [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
+                  [&::-webkit-slider-thumb]:rounded-full
+                  [&::-webkit-slider-thumb]:bg-primary
+                  [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-primary/30
+                  [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white/20
+                  [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:duration-150
+                  [&::-webkit-slider-thumb]:hover:scale-125"
+              />
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-1 px-0.5">
+                <span>Chậm</span>
+                <span>Bình thường</span>
+                <span>Nhanh</span>
+              </div>
+            </div>
+          </div>
+
+          <p className="text-xs text-emerald-400">
+            ✨ Tự động: chuẩn hóa số/đơn vị, xóa khoảng lặng, kiểm tra Whisper
+          </p>
+        </div>
       )}
 
       {/* Synthesize Button */}
@@ -155,6 +280,23 @@ export default function SynthesisPanel({
           </>
         )}
       </Button>
+
+      {/* Progress Display */}
+      {isSynthesizing && (
+        <div className="space-y-2 animate-slide-up">
+          <div className="relative w-full h-2.5 bg-secondary rounded-full overflow-hidden">
+            <div
+              className="absolute top-0 left-0 h-full bg-gradient-to-r from-primary via-accent to-primary rounded-full transition-all duration-500 ease-out"
+              style={{ width: `${Math.max(progress, 5)}%` }}
+            />
+            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-pulse" />
+          </div>
+          <div className="flex justify-between items-center">
+            <p className="text-xs text-muted-foreground">{progressMessage}</p>
+            <span className="text-xs font-mono text-primary">{progress}%</span>
+          </div>
+        </div>
+      )}
 
       {/* Mode indicator */}
       {canSynthesize && !isSynthesizing && !result && (
@@ -217,6 +359,11 @@ export default function SynthesisPanel({
           <div className="flex items-center gap-2 text-green-400 text-sm">
             <CheckCircle2 className="w-4 h-4" />
             <span className="font-medium">Tổng hợp thành công!</span>
+            {result.coverage !== undefined && result.coverage > 0 && (
+              <span className="text-xs text-muted-foreground ml-auto">
+                Độ phủ: {Math.round(result.coverage * 100)}%
+              </span>
+            )}
           </div>
 
           {/* Audio Player */}
@@ -273,7 +420,7 @@ export default function SynthesisPanel({
               </div>
 
               {/* Info row */}
-              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
                 <span className="flex items-center gap-1">
                   <Clock className="w-3 h-3" />
                   Xử lý: {result.processing_time}s
@@ -282,6 +429,16 @@ export default function SynthesisPanel({
                   <FileText className="w-3 h-3" />
                   {result.text_length} ký tự
                 </span>
+                {result.quality && (
+                  <span className="text-primary/70">
+                    {result.quality === "high" ? "💎" : result.quality === "fast" ? "⚡" : "🎯"} {result.quality}
+                  </span>
+                )}
+                {result.speed && result.speed !== 1.0 && (
+                  <span className="text-primary/70">
+                    {result.speed}×
+                  </span>
+                )}
               </div>
             </div>
 
